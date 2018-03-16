@@ -1,0 +1,42 @@
+##Not satisfied with the model optimization
+##Try it for neural network
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import Softmax, Dropout
+from keras.layers.normalization import BatchNormalization
+
+input_dim = 10
+output_dim = 2 
+# define baseline model
+def baseline_model():
+	# Create model
+    model = Sequential()
+    model.add(Dense(64, input_dim=10, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(2, activation='softmax'))
+	# Compile model
+    model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    return model
+model=baseline_model()
+model.fit(np.array(x_train2), np.array(y_train2.values.ravel()), batch_size = 20, epochs = 10, verbose=0)
+
+
+model.summary()
+
+
+#Evaluation
+score = model.evaluate(np.array(x_test2),np.array(y_test2.values.ravel()),verbose=0)
+print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
+
+
+y_pred_nn = model.predict(x_test2)
+# round predictions
+rounded = [round(x[0]) for x in y_pred_nn]
+predictions_nn = pd.DataFrame(rounded)
+predictions_nn.head()
+
+print ('The optimized logistic regression has better prediction accuracy score and better AOC score by using cross-validation '
+      'and grid search for the optimal parameters and better penalty method for the model.\n' 
+      'And the random forest with grid search for optimal parameters also has good prediction accuracy score, '
+      'but the AOC score is not as good as the optimized logistic regression.\n'
+      'And neural network does not improve the prediction performance significantly here.')
