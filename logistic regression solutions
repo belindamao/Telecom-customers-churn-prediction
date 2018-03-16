@@ -1,0 +1,419 @@
+
+# coding: utf-8
+
+#1. Load libraries
+import re
+import pandas as pd
+import numpy as np
+import os
+import sys
+import matplotlib.pyplot as plt
+import seaborn as sb
+
+from sklearn import preprocessing
+from sklearn.linear_model import LogisticRegression
+from sklearn.cross_validation import train_test_split
+from sklearn import metrics 
+from sklearn.metrics import classification_report
+
+os.getcwd()
+os.chdir('C:\\Users\\belinda\\Downloads\\Interviews\\Nurx\\PATC\\PATC')
+
+#2. Load the data
+tcc = pd.read_csv('Telco-Customer-Churn.csv')
+tcc.head()
+tcc.columns
+tcc.shape
+
+#3. Exploratory Data Analysis
+#a. How many classes are there?
+pd.unique(tcc['Churn'].values.ravel())
+
+print("Amount of Classes:", len(pd.unique(tcc['Churn'].values.ravel()))) 
+
+for col in tcc.select_dtypes(include=['object']).columns:
+    print ("Column {} has {} unique instances".format(col, len(tcc[col].unique())))  
+
+#b. Drop some variables with too high cardinality
+tcc = tcc.drop('customerID',1)
+tcc = tcc.drop('TotalCharges',1) ##This column has repeated meaning as MonthlyCharges so I delete this one.
+
+#c. Some distributions of statistics
+tcc['MultipleLines'].value_counts().plot(kind='bar')
+
+tcc['TechSupport'].value_counts().plot(kind='bar')
+
+#d. What is the distribution of target class?
+tcc['Churn'].value_counts().plot(kind='bar')
+
+tcc['SeniorCitizen'].value_counts().plot(kind='bar')
+
+tcc['tenure'].value_counts().plot(kind='density')
+
+tcc['MonthlyCharges'].value_counts().plot(kind='density')
+
+#e. What are the numeric columns?
+tcc._get_numeric_data().columns
+
+print ("There are {} numeric columns in the data set".format(len(tcc._get_numeric_data().columns)))
+
+#f. WHat are the character columns?
+#For one-hot encoding into a model matrix
+print ("There are {} character columns in the data set".format(len(tcc.select_dtypes(include=['object']).columns)))
+
+#4. Pre-processing the data
+#Checking the missing variables
+tcc.isnull().sum()
+
+#To have train set and test set
+#a. Remove the target from the entire dataset
+X = tcc.drop('Churn', axis=1, inplace=False)
+#Let the response variable become binary variable using dummy variables
+Y = pd.get_dummies(tcc['Churn'],drop_first=True)
+Y.head()
+
+
+#b. Transform the data into a model matrix with one-hot encoding
+#Isolate the variables of character class
+def model_matrix(df,columns):
+    dummified_cols = pd.get_dummies(df[columns])
+    df = df.drop(columns, axis = 1, inplace=False)
+    df_new = df.join(dummified_cols)
+    return df_new
+
+list_char = list(tcc.select_dtypes(include=['object']).columns)
+list_char.remove('Churn')
+len(list_char)
+
+
+#See the shape of the one-hot encoded matrix
+X = model_matrix(X, list_char)
+X.shape
+
+
+X.head()
+
+
+#c. Scale the continuous variables using min-max calculation
+X2 = X.fillna(value=0)
+X2.head()
+list_X = list(X2.columns)
+from sklearn.preprocessing import MinMaxScaler
+Scaler = MinMaxScaler()
+X2[list_X] = Scaler.fit_transform(X2[list_X])
+X2.head()
+
+
+X2.describe().T
+
+
+##Feature Selection
+##Using Wrapper Method
+#Using Recursive Feature Elimination to make the number of feature from 44 to 15
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LogisticRegression
+
+model = LogisticRegression()
+
+rfe = RFE(model, 15) 
+rfe = rfe.fit(X2, Y.values.ravel())
+
+print(rfe.support_)
+print(rfe.ranking_) 
+
+#Getting the feature after dimentionality deduction
+col_filter = X2.columns[rfe.support_] 
+col_filter
+
+
+##Using Filter Method
+#Getting those feature with high correlations and delete those feature with high correlations
+colormap = plt.cm.viridis
+plt.figure(figsize=(12,12))
+plt.title('Pearson Correlation of Features', y=1.05, size=15)
+sb.heatmap(X2[col_filter].corr(),linewidths=0.1,vmax=1.0, square=True, cmap=colormap, linecolor='white', annot=True)
+
+
+drop_col = ['OnlineSecurity_No internet service', 'TechSupport_No internet service', 'InternetService_Fiber optic',
+            'InternetService_No', 'StreamingMovies_Yes']
+col_new = col_filter.drop(drop_col) 
+
+
+#Reduce the feature from 15 to 10 now
+len(col_new)
+
+col_new
+
+colormap = plt.cm.viridis
+plt.figure(figsize=(12,12))
+plt.title('Pearson Correlation of Features', y=1.05, size=15)
+sb.heatmap(X2[col_new].corr(),linewidths=0.1,vmax=1.0, square=True, cmap=colormap, linecolor='white', annot=True)
+
+
+##Using Embedded Method
+##Get the feature importances with random forest
+names = X2[col_new].columns
+from sklearn.ensemble import RandomForestClassifier
+clf=RandomForestClassifier(n_estimators=10,random_state=123)
+clf.fit(X2[col_new],Y.values.ravel()) 
+names, clf.feature_importances_
+for feature in zip(names, clf.feature_importances_):
+    print(feature)
+
+plt.style.use('fivethirtyeight')
+plt.rcParams['figure.figsize'] = (12,6)
+
+## feature importances##
+importances = clf.feature_importances_
+feat_names = names
+indices = np.argsort(importances)[::-1]
+fig = plt.figure(figsize=(20,6))
+plt.title("Feature importances by RandomTreeClassifier")
+plt.bar(range(len(indices)), importances[indices], color='lightblue',  align="center")
+plt.step(range(len(indices)), np.cumsum(importances[indices]), where='mid', label='Cumulative')
+plt.xticks(range(len(indices)), feat_names[indices], rotation='vertical',fontsize=14)
+plt.xlim([-1, len(indices)])
+plt.show()
+
+print('What are the key drivers of churn?\n')
+print('From the random forest algorithm we can see the key drivers of churn are as following:' 
+      'Monthly_Charges counts around 41.43%, tenure counts around 28.75%, '
+      'Contract_Month_to_Month counts around 9.59%, No_online_security counts around 7.33%.\n')
+print('How would you identify customers who are most likely to churn next?\n')
+print('I will use these ten feature as the predictor variables and use logistic regression as a baseline model to ' 
+      'do prediction to identify customers who are most likely to churn next, and also use cross-validation and grid search '
+     'for the optimal parameters to do model optimization because the target class of churn is binary with YES or NO. '
+      'Logistic regression might be a great fit for binary classification with categorical variables as predictor variables. '
+     'Also I use other machine learning algorithms to see whether I can improve the prediction accuracy. '
+     'I will use random forest and neural network for the prediction problems here.')
+
+#Prediction using logistic regression, random forest and neural network
+#d. Partition the data into train and testing
+x_train, x_test, y_train, y_test = train_test_split(X2[col_new], Y, test_size=0.3, random_state=123)
+print(x_train.shape)
+
+
+#5. Building the logistics regression model
+LogReg = LogisticRegression()
+LogReg.fit(x_train, y_train.values.ravel())
+
+
+##Predicting on the test data
+y_pred = LogReg.predict(x_test)
+print(y_pred)
+
+
+x_train.columns
+
+
+#See the predictor variables coeffient with the response variable in this logistic regression model
+LogReg.fit(x_train / np.std(x_train, 0), y_train.values.ravel())
+print(LogReg.coef_)
+
+
+print('Tenure has a negative correlation with churn;\nMonthly Charges has a positive correlation with churn;\n')
+print('No_online_security has a positive correlation with churn;\ncontract_month_to_month has a positive correlation with churn;\n ')
+print('Contract_two_year has a negative correlation with churn;\nno_paperless_billing has a negative correlation with churn;\n')
+print('Payment_method_electronic has a positive correlation with churn.\n')
+
+
+print('So to prevent people from leaving, the company can give better rewards for the customers who has long tenure,\n'
+     'and let customers can have month to month contract instead of too long contracts like two years.\n'
+     'Also the telecom company should let the customers have the electronic payment method for their billings\n'
+     'instead of only having the paperless billing method.'
+     'What is more important is, the telecom company can make customers save more money monthly will retain the customers.')
+
+#Evaluating the classifier model using R squared
+rsquared_train = LogReg.score(x_train, y_train)
+rsquared_test = LogReg.score(x_test, y_test)
+print ("Training data R-squared:")
+print (rsquared_train)
+
+
+
+print ("Test data R-squared:")
+print (rsquared_test)
+
+
+
+#Confusion Matrix
+from sklearn.metrics import confusion_matrix
+confusion_matrix = confusion_matrix(y_test, y_pred)
+confusion_matrix
+
+
+
+plt.figure(figsize=(5,3))
+sb.heatmap(confusion_matrix)
+
+
+
+
+#Classification Report
+from sklearn.metrics import classification_report
+logit_classify_report = classification_report(y_test, y_pred )
+print(logit_classify_report)
+
+
+
+
+
+#ROC Curve
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_curve
+logit_roc_auc = roc_auc_score(y_test, y_pred)
+fpr, tpr, thresholds = roc_curve(y_test, LogReg.predict_proba(x_test)[:,1])
+plt.figure()
+plt.plot(fpr, tpr, label='Logit (area=%0.2f)'%logit_roc_auc)
+plt.plot([0,1],[0,1],'r--')
+plt.xlim([0.0,1.0])
+plt.ylim([0.0,1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating charactersitic')
+plt.legend(loc='lower right')
+plt.savefig('Log_ROC')
+plt.show()
+
+
+
+
+from sklearn.metrics import accuracy_score
+print("Test set accuracy score: {:.5f}".format(accuracy_score(y_test, y_pred,)))
+
+
+
+
+from sklearn.metrics import roc_auc_score
+roc_auc1 = roc_auc_score(y_test, y_pred)
+print("Area under the ROC curve : %f" % roc_auc1)
+
+
+
+
+##Model Optimization
+##Cross-validation and grid search
+from sklearn.model_selection import GridSearchCV
+from sklearn.cross_validation import train_test_split 
+
+x_train2, x_test2, y_train2, y_test2 = train_test_split(X2[col_new], Y, test_size = 0.3, random_state = 0) 
+param_grid = {'C': [0.01,0.1, 1, 10, 100, 1000,],
+                            'penalty': [ 'l1', 'l2']}
+
+# Using LogisticRegression with parameters param_grid
+grid_search = GridSearchCV(LogisticRegression(),  param_grid, cv=10, return_train_score=True)
+
+# Using training set to learn this algorithm
+grid_search.fit(x_train2, y_train2.values.ravel()) 
+
+
+
+results = pd.DataFrame(grid_search.cv_results_) 
+best = np.argmax(results.mean_test_score.values)
+print("Best parameters: {}".format(grid_search.best_params_))
+print("Best cross-validation score: {:.5f}".format(grid_search.best_score_))
+
+results
+
+
+print("Best estimator:\n{}".format(grid_search.best_estimator_))#grid_search.best_estimator_
+
+
+y_pred2 = grid_search.predict(x_test2)
+print("Test set accuracy score: {:.5f}".format(accuracy_score(y_test2, y_pred2,)))
+
+print(classification_report(y_test2, y_pred2))
+
+
+
+roc_auc2 = roc_auc_score(y_test2, y_pred2)
+print("Area under the ROC curve : %f" % roc_auc2)
+
+
+##Not satisfied with the model optimization
+##Try it for random forest
+#Algorithm Optimization by Grid Search
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.cross_validation import StratifiedKFold # Add important libs
+randomforest = RandomForestClassifier()
+parameter_gridsearch = {
+                 'max_depth' : [3, 4],  #depth of each decision tree
+                 'n_estimators': [50, 20],  #count of decision tree
+                 'max_features': ['sqrt', 'auto', 'log2'],      
+                 'min_samples_split': [2],      
+                 'min_samples_leaf': [1, 3, 4],
+                 'bootstrap': [True, False],
+                 }
+
+
+#Random Forrest Classifier
+crossvalidation = StratifiedKFold(y_train2.values.ravel() , n_folds=5)
+
+
+gridsearch = GridSearchCV(randomforest,             #grid search for algorithm optimization
+                               scoring='accuracy',
+                               param_grid=parameter_gridsearch,
+                               cv=crossvalidation)
+
+gridsearch.fit(x_train2, y_train2.values.ravel())    #y_train[0::,0] is as target
+rf_model = gridsearch
+parameters = gridsearch.best_params_
+
+
+#Score Computation
+print('Best Score: {}'.format(gridsearch.best_score_))
+
+
+#Test set accuracy score
+y_pred_rf = rf_model.predict(x_test2)
+print("Test set accuracy score: {:.5f}".format(accuracy_score(y_test2, y_pred_rf,)))
+
+print(classification_report(y_test2, y_pred_rf))
+
+roc_auc_rf = roc_auc_score(y_test2, y_pred_rf)
+print("Area under the ROC curve : %f" % roc_auc_rf)
+
+
+##Not satisfied with the model optimization
+##Try it for neural network
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import Softmax, Dropout
+from keras.layers.normalization import BatchNormalization
+
+input_dim = 10
+output_dim = 2 
+# define baseline model
+def baseline_model():
+	# Create model
+    model = Sequential()
+    model.add(Dense(64, input_dim=10, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(2, activation='softmax'))
+	# Compile model
+    model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    return model
+model=baseline_model()
+model.fit(np.array(x_train2), np.array(y_train2.values.ravel()), batch_size = 20, epochs = 10, verbose=0)
+
+
+model.summary()
+
+
+#Evaluation
+score = model.evaluate(np.array(x_test2),np.array(y_test2.values.ravel()),verbose=0)
+print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
+
+
+y_pred_nn = model.predict(x_test2)
+# round predictions
+rounded = [round(x[0]) for x in y_pred_nn]
+predictions_nn = pd.DataFrame(rounded)
+predictions_nn.head()
+
+print ('The optimized logistic regression has better prediction accuracy score and better AOC score by using cross-validation '
+      'and grid search for the optimal parameters and better penalty method for the model.\n' 
+      'And the random forest with grid search for optimal parameters also has good prediction accuracy score, '
+      'but the AOC score is not as good as the optimized logistic regression.\n'
+      'And neural network does not improve the prediction performance significantly here.')
