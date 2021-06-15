@@ -16,10 +16,13 @@ The data set includes information about:
  
 This data set provides info to help you predict behaviors correlated with churn. You can analyze all relevant customer data and develop focused customer retention programs. 
 
- Use the data analytics language of your choice to answer: 
+Use the data analytics language of your choice to answer: 
+ 
 Which customers are likely to leave and how can we proactively prevent that? 
  
-Guiding questions: 
+Guiding questions:  
+
 • What are the key drivers of churn?  
 
-• How would you identify customers who are most likely to churn next? o Use the decision rules to identify customers who fit the churn profile so you can proactively offer them an incentive to stay. 
+• How would you identify customers who are most likely to churn next?  
+Use the decision rules to identify customers who fit the churn profile so you can proactively offer them an incentive to stay. 
